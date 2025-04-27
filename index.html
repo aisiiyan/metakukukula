@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Meta Data Editor</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: 'Segoe UI', sans-serif; background: #fff; color: #333; font-size: 14px; }
+    h1 { text-align: center; font-size: 22px; padding: 1rem 0; margin: 0; border-bottom: 1px solid #ddd; font-weight: 500; }
+    header { background: #fff; padding: 0.8rem; display: flex; flex-wrap: wrap; justify-content: center; gap: 0.5rem; border-bottom: 1px solid #eee; }
+    header label.upload-btn, header button { background: #f0f0f0; color: #333; border: 1px solid #ccc; padding: 0.4rem 0.8rem; font-size: 13px; border-radius: 6px; cursor: pointer; }
+    header label.upload-btn:hover, header button:hover { background: #e0e0e0; }
+    #fileInput { display: none; }
+    .notes-container { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin: 20px auto; max-width: 900px; padding: 0 10px; }
+    .note { display: flex; flex-direction: column; width: 250px; background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 10px; }
+    .note textarea { width: 100%; height: 80px; resize: none; font-size: 13px; padding: 8px; border: 1px solid #ccc; border-radius: 6px; background: #fafafa; }
+    .note-buttons { display: flex; justify-content: space-between; margin-top: 8px; }
+    .note-buttons button { flex: 1; background: #f0f0f0; color: #333; border: 1px solid #ccc; margin: 0 2px; padding: 4px 6px; font-size: 12px; border-radius: 6px; cursor: pointer; }
+    .note-buttons button:hover { background: #e0e0e0; }
+    .clear-all-container { text-align: center; margin: 10px 0 20px; }
+    .clear-all-container button { background: #f0f0f0; color: #333; border: 1px solid #ccc; padding: 0.5rem 1rem; font-size: 13px; border-radius: 6px; cursor: pointer; }
+    .clear-all-container button:hover { background: #e0e0e0; }
+    .container { max-width: 900px; margin: 1rem auto; padding: 0 1rem; display: flex; flex-direction: column; gap: 1rem; }
+    .file-entry { display: flex; background: #fff; border: 1px solid #eee; border-radius: 8px; padding: 1rem; gap: 1rem; align-items: flex-start; }
+    .file-entry img { width: 100px; height: auto; border-radius: 6px; object-fit: cover; background: #f0f0f0; }
+    .meta { flex: 1; display: flex; flex-direction: column; gap: 0.5rem; }
+    .meta strong { font-size: 14px; font-weight: 500; word-break: break-word; }
+    .meta label { font-size: 13px; font-weight: 500; }
+    .input-row { display: flex; gap: 0.5rem; }
+    .input-row input[type="text"] { flex: 1; padding: 0.4rem 0.6rem; font-size: 13px; border: 1px solid #ccc; border-radius: 6px; }
+    .tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 0.3rem; }
+    .tag { background: #d0d0d0; padding: 4px 10px; border-radius: 20px; font-size: 12px; display: flex; align-items: center; }
+    .tag span { margin-left: 6px; cursor: pointer; font-weight: bold; }
+    .checkbox { margin-bottom: 0.5rem; transform: scale(1.2); cursor: pointer; }
+    .actions { margin-top: 0.5rem; text-align: right; }
+    .actions button { background: #f0f0f0; color: #333; border: 1px solid #ccc; padding: 0.4rem 0.8rem; font-size: 13px; border-radius: 6px; cursor: pointer; }
+    .actions button:hover { background: #e0e0e0; }
+    .tag-counter { font-size: 12px; margin-left: 0.5rem; color: #555; }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/exifr/dist/full.umd.js"></script>
+</head>
+<body>
+
+<h1>Meta Data Editor</h1>
+
+<!-- CATATAN -->
+<div class="notes-container">
+  <div class="note">
+    <textarea id="note1" placeholder="Catatan 1..."></textarea>
+    <div class="note-buttons">
+      <button onclick="copyText('note1')">Copy</button>
+      <button onclick="pasteText('note1')">Paste</button>
+      <button onclick="clearText('note1')">Clear</button>
+    </div>
+  </div>
+  <div class="note">
+    <textarea id="note2" placeholder="Catatan 2..."></textarea>
+    <div class="note-buttons">
+      <button onclick="copyText('note2')">Copy</button>
+      <button onclick="pasteText('note2')">Paste</button>
+      <button onclick="clearText('note2')">Clear</button>
+    </div>
+  </div>
+</div>
+
+<div class="clear-all-container">
+  <button onclick="clearAllNotes()">Clear All Notes</button>
+</div>
+
+<!-- METADATA -->
+<header>
+  <label for="fileInput" class="upload-btn">Pilih File</label>
+  <input type="file" id="fileInput" multiple accept=".jpg,.jpeg" />
+  <button onclick="downloadMetadata()">Save Metadata</button>
+  <button onclick="deleteSelected()">Delete Selected</button>
+  <button onclick="selectAll(true)">Select All</button>
+</header>
+
+<div class="container" id="previewContainer"></div>
+
+<script>
+let filesData = [];
+
+function copyText(id) {
+  const text = document.getElementById(id).value;
+  navigator.clipboard.writeText(text);
+}
+
+function pasteText(id) {
+  navigator.clipboard.readText().then(text => {
+    document.getElementById(id).value = text;
+  });
+}
+
+function clearText(id) {
+  document.getElementById(id).value = '';
+}
+
+function clearAllNotes() {
+  document.getElementById('note1').value = '';
+  document.getElementById('note2').value = '';
+}
+
+document.getElementById('fileInput').addEventListener('change', async function(e) {
+  const files = Array.from(e.target.files).sort((a, b) => a.name.localeCompare(b.name));
+  for (const file of files) {
+    const reader = new FileReader();
+    reader.onload = async function(event) {
+      const dataUrl = event.target.result;
+      const metadata = await exifr.parse(file);
+      const title = metadata?.ObjectName || metadata?.ImageDescription || '';
+      const tags = metadata?.Keywords ? (Array.isArray(metadata.Keywords) ? metadata.Keywords : [metadata.Keywords]) : [];
+      filesData.push({ file, title, tags, selected: true });
+      renderPreview(file.name, dataUrl, title, tags);
+    };
+    reader.readAsDataURL(file);
+  }
+});
+
+function renderPreview(fileName, imageSrc, title = '', tags = []) {
+  const container = document.createElement('div');
+  container.className = 'file-entry';
+  container.dataset.filename = fileName;
+  container.innerHTML = `
+    <div>
+      <input type="checkbox" class="checkbox" checked onchange="toggleSelect(this)">
+      <img src="${imageSrc}" alt="${fileName}">
+    </div>
+    <div class="meta">
+      <strong>${fileName}</strong>
+      <label>Title:</label>
+      <div class="input-row">
+        <input type="text" id="title-${fileName}" value="${title}" oninput="updateField('${fileName}', 'title', this.value)">
+        <button onclick="pasteToField('title-${fileName}')">Paste</button>
+        <button onclick="clearField('title-${fileName}')">Clear</button>
+      </div>
+      <label>Tags: <span id="tagcount-${fileName}" class="tag-counter">0/50</span></label>
+      <div class="tags" id="tags-${fileName}"></div>
+      <div class="input-row">
+        <input type="text" id="taginput-${fileName}" placeholder="Add tags..." onkeydown="handleTagInput(event, '${fileName}')">
+        <button onclick="pasteToTags('${fileName}')">Paste</button>
+        <button onclick="clearTags('${fileName}')">Clear</button>
+      </div>
+      <div class="actions">
+        <button onclick="removeFile('${fileName}')">Hapus File</button>
+      </div>
+    </div>
+  `;
+  document.getElementById('previewContainer').appendChild(container);
+  updateTagsDisplay(fileName);
+}
+
+function updateField(fileName, field, value) {
+  const file = filesData.find(f => f.file.name === fileName);
+  if (file) file[field] = value;
+}
+
+function handleTagInput(e, fileName) {
+  if (e.key === 'Enter' || e.key === ',') {
+    e.preventDefault();
+    const val = e.target.value.trim();
+    if (!val) return;
+    const newTags = val.split(',').map(t => t.trim()).filter(Boolean);
+    const file = filesData.find(f => f.file.name === fileName);
+    if (file) {
+      newTags.forEach(tag => {
+        if (file.tags.length < 50 && !file.tags.includes(tag)) {
+          file.tags.push(tag);
+        }
+      });
+      e.target.value = '';
+      updateTagsDisplay(fileName);
+    }
+  }
+}
+
+function updateTagsDisplay(fileName) {
+  const file = filesData.find(f => f.file.name === fileName);
+  if (!file) return;
+  const tagContainer = document.getElementById(`tags-${fileName}`);
+  const counter = document.getElementById(`tagcount-${fileName}`);
+  tagContainer.innerHTML = '';
+  file.tags = file.tags || [];
+  file.tags.forEach((tag, index) => {
+    const el = document.createElement('div');
+    el.className = 'tag';
+    el.textContent = tag;
+    const removeBtn = document.createElement('span');
+    removeBtn.textContent = '×';
+    removeBtn.onclick = () => {
+      file.tags.splice(index, 1);
+      updateTagsDisplay(fileName);
+    };
+    el.appendChild(removeBtn);
+    tagContainer.appendChild(el);
+  });
+  counter.textContent = `${file.tags.length}/50`;
+}
+
+function clearField(inputId) {
+  const input = document.getElementById(inputId);
+  if (input) {
+    input.value = '';
+    input.dispatchEvent(new Event('input'));
+  }
+}
+
+function clearTags(fileName) {
+  const file = filesData.find(f => f.file.name === fileName);
+  if (file) {
+    file.tags = [];
+    updateTagsDisplay(fileName);
+  }
+}
+
+function removeFile(fileName) {
+  filesData = filesData.filter(f => f.file.name !== fileName);
+  document.querySelector(`[data-filename=\"${fileName}\"]`)?.remove();
+}
+
+function selectAll(checked) {
+  document.querySelectorAll('.checkbox').forEach(cb => cb.checked = checked);
+  filesData.forEach(f => f.selected = checked);
+}
+
+function toggleSelect(checkbox) {
+  const fileName = checkbox.closest('.file-entry').dataset.filename;
+  const file = filesData.find(f => f.file.name === fileName);
+  if (file) file.selected = checkbox.checked;
+}
+
+function deleteSelected() {
+  filesData = filesData.filter(f => !f.selected);
+  document.querySelectorAll('.file-entry').forEach(entry => {
+    const fileName = entry.dataset.filename;
+    if (!filesData.find(f => f.file.name === fileName)) {
+      entry.remove();
+    }
+  });
+}
+
+function downloadMetadata() {
+  let content = '';
+  filesData.filter(f => f.selected).forEach(f => {
+    content += `# ${f.file.name}\n`;
+    content += `Title: ${f.title}\n`;
+    content += `Tags: ${f.tags.join(', ')}\n\n`;
+  });
+  const blob = new Blob([content], { type: 'text/plain' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'metadata.txt';
+  a.click();
+}
+
+async function pasteToField(inputId) {
+  try {
+    const text = await navigator.clipboard.readText();
+    const input = document.getElementById(inputId);
+    if (input) {
+      input.value = text;
+      input.dispatchEvent(new Event('input'));
+    }
+  } catch {
+    alert('Gagal mengakses clipboard.');
+  }
+}
+
+async function pasteToTags(fileName) {
+  try {
+    const text = await navigator.clipboard.readText();
+    const input = document.getElementById(`taginput-${fileName}`);
+    if (input) {
+      input.value = text;
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+    }
+  } catch {
+    alert('Gagal mengakses clipboard.');
+  }
+}
+</script>
+
+</body>
+</html>
